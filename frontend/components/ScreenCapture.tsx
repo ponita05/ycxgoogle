@@ -45,26 +45,26 @@ export default function ScreenCapture({ onShareStart, onShareStop }: ScreenCaptu
   }
 
   return (
-    <div className="flex flex-col items-center gap-3">
+    <div className="flex flex-col items-center gap-3 w-full">
       <button
         onClick={isSharing ? stopShare : startShare}
-        className={`px-6 py-3 rounded-xl font-semibold text-white transition-colors ${
+        className={`w-full px-5 py-2.5 rounded-lg font-medium text-sm transition-all ${
           isSharing
-            ? "bg-red-600 hover:bg-red-700"
-            : "bg-indigo-600 hover:bg-indigo-700"
+            ? "border border-red-500/40 text-red-400 hover:bg-red-500/10 hover:border-red-400/60"
+            : "border border-cyan-500/40 text-cyan-400 hover:bg-cyan-500/10 hover:border-cyan-400/60"
         }`}
       >
-        {isSharing ? "Stop Screen Share" : "Share Screen"}
+        {isSharing ? "⏹ Stop Screen Share" : "🖥 Share Screen"}
       </button>
 
       {isSharing && (
-        <span className="text-sm text-green-400 flex items-center gap-1">
-          <span className="inline-block w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+        <span className="flex items-center gap-1.5 text-xs text-cyan-400">
+          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_6px_#22d3ee]" />
           Screen sharing — agent is watching
         </span>
       )}
 
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {error && <p className="text-xs text-red-400">{error}</p>}
     </div>
   );
 }

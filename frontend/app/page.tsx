@@ -1,17 +1,46 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Sidebar } from "@/components/Dashboard/Sidebar";
 import { RecordingsPanel } from "@/components/Dashboard/RecordingsPanel";
 import VisualEditor from "@/components/Dashboard/VisualEditor";
 import Visualizer3D from "@/components/Dashboard/Visualizer3D";
 import { LiveSession } from "@/components/Dashboard/LiveSession";
 
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
 const sections = ["live", "flow", "visualizer", "recordings", "settings"];
+
+interface Stats {
+  sessions_today: number;
+  tracks_generated: number;
+  avg_duration: string;
+  processing: number;
+}
 
 export default function Home() {
   const [activeSection, setActiveSection] = useState("live");
+  const [stats, setStats] = useState<Stats>({
+    sessions_today: 0,
+    tracks_generated: 0,
+    avg_duration: "0:00",
+    processing: 0,
+  });
   const observerRef = useRef<IntersectionObserver | null>(null);
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/stats`);
+      if (res.ok) setStats(await res.json());
+    } catch {
+      // silently fail — stats are non-critical
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchStats();
+    const interval = setInterval(fetchStats, 15_000);
+    return () => clearInterval(interval);
+  }, [fetchStats]);
 
   useEffect(() => {
     observerRef.current = new IntersectionObserver(
@@ -37,11 +66,11 @@ export default function Home() {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  const stats = [
-    { label: "Sessions Today", value: "12", color: "from-cyan-400 to-blue-500", glow: "shadow-cyan-500/30" },
-    { label: "Tracks Generated", value: "47", color: "from-violet-400 to-purple-600", glow: "shadow-purple-500/30" },
-    { label: "Avg Duration", value: "8:42", color: "from-pink-400 to-rose-500", glow: "shadow-pink-500/30" },
-    { label: "Processing", value: "2", color: "from-emerald-400 to-teal-500", glow: "shadow-emerald-500/30" },
+  const statCards = [
+    { label: "Sessions Today",   value: String(stats.sessions_today),  color: "from-cyan-400 to-blue-500" },
+    { label: "Tracks Generated", value: String(stats.tracks_generated), color: "from-violet-400 to-purple-600" },
+    { label: "Avg Duration",     value: stats.avg_duration,             color: "from-pink-400 to-rose-500" },
+    { label: "Processing",       value: String(stats.processing),       color: "from-emerald-400 to-teal-500" },
   ];
 
   return (
@@ -58,9 +87,9 @@ export default function Home() {
               <span className="text-xs font-medium text-white/50 uppercase tracking-widest">Live</span>
             </div>
             <div className="flex items-center gap-6">
-              {stats.map((s) => (
+              {statCards.map((s) => (
                 <div key={s.label} className="text-center">
-                  <div className={`text-lg font-bold bg-gradient-to-r ${s.color} bg-clip-text text-transparent`}>
+                  <div className={`text-lg font-bold bg-gradient-to-r ${s.color} bg-clip-text text-transparent tabular-nums`}>
                     {s.value}
                   </div>
                   <div className="text-[10px] text-white/30 uppercase tracking-wider">{s.label}</div>
@@ -140,9 +169,20 @@ export default function Home() {
           <section id="settings" className="scroll-mt-20 pb-32">
             <SectionLabel color="text-amber-400" glyph="05">Settings</SectionLabel>
             <div className="mt-6 p-[1px] rounded-2xl bg-gradient-to-br from-amber-500 via-orange-500 to-red-500 shadow-[0_0_60px_rgba(245,158,11,0.2)]">
-              <div className="bg-[#110e07] rounded-2xl p-8">
-                <h3 className="text-base font-semibold text-white mb-2">Configuration</h3>
-                <p className="text-sm text-white/30">Settings configuration not implemented yet.</p>
+              <div className="bg-[#110e07] rounded-2xl p-8 space-y-5">
+                {[
+                  { label: "Backend URL", value: BACKEND_URL },
+                  { label: "LiveKit Room", value: "game-audio-room" },
+                  { label: "Frame Sample Interval", value: "3s  (FRAME_SAMPLE_INTERVAL)" },
+                  { label: "Overshoot Model", value: "Qwen/Qwen3-VL-8B-Instruct  (OVERSHOOT_MODEL)" },
+                ].map(({ label, value }) => (
+                  <div key={label}>
+                    <h3 className="text-xs font-semibold text-white/60 uppercase tracking-widest mb-1">{label}</h3>
+                    <p className="text-xs font-mono text-amber-400/80 bg-amber-500/5 border border-amber-500/10 rounded-lg px-3 py-2">
+                      {value}
+                    </p>
+                  </div>
+                ))}
               </div>
             </div>
           </section>

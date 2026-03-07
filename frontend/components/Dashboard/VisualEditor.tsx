@@ -4,13 +4,24 @@ import React, { useCallback } from 'react';
 import { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState, addEdge, Connection } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
+// Represents the actual agent pipeline:
+// GameScreen → Overshoot Vision AI → Scene Description → Lyria Prompt → Lyria RealTime → Audio Output
 const initialNodes = [
-  { id: '1', position: { x: 0, y: 0 }, data: { label: 'Audio Input' }, type: 'input' },
-  { id: '2', position: { x: 0, y: 100 }, data: { label: 'Analyzer' } },
-  { id: '3', position: { x: 0, y: 200 }, data: { label: 'Output' }, type: 'output' },
+  { id: '1', type: 'input',  position: { x: 0,   y: 200 }, data: { label: '🎮 Game Screen Capture' } },
+  { id: '2',                 position: { x: 260, y: 100 }, data: { label: '👁️ Overshoot Vision AI' } },
+  { id: '3',                 position: { x: 260, y: 300 }, data: { label: '📝 Scene Description' } },
+  { id: '4',                 position: { x: 520, y: 200 }, data: { label: '🎵 Lyria Prompt Builder' } },
+  { id: '5',                 position: { x: 780, y: 200 }, data: { label: '🌊 Lyria RealTime' } },
+  { id: '6', type: 'output', position: { x: 1040, y: 200 }, data: { label: '🔊 Audio Output (LiveKit)' } },
 ];
 
-const initialEdges = [{ id: 'e1-2', source: '1', target: '2' }, { id: 'e2-3', source: '2', target: '3' }];
+const initialEdges = [
+  { id: 'e1-2', source: '1', target: '2', label: 'video frames' },
+  { id: 'e2-3', source: '2', target: '3', label: 'analysis' },
+  { id: 'e3-4', source: '3', target: '4', label: 'description' },
+  { id: 'e4-5', source: '4', target: '5', label: 'weighted prompts' },
+  { id: 'e5-6', source: '5', target: '6', label: '48kHz PCM' },
+];
 
 export default function VisualEditor() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);

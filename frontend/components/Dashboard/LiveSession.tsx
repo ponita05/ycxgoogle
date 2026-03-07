@@ -2,7 +2,7 @@
 
 import { LiveKitRoom, RoomAudioRenderer } from "@livekit/components-react";
 import "@livekit/components-styles";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import AudioPlayer from "@/components/AudioPlayer";
 import ScreenCapture from "@/components/ScreenCapture";
 
@@ -19,11 +19,26 @@ async function fetchToken(identity: string): Promise<{ token: string; url: strin
   return res.json();
 }
 
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
 export function LiveSession() {
   const [token, setToken] = useState<string | null>(null);
   const [livekitUrl, setLivekitUrl] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const sessionStartRef = useRef<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
 
   async function connect() {
     setConnecting(true);
@@ -33,6 +48,11 @@ export function LiveSession() {
       const { token, url } = await fetchToken(identity);
       setLivekitUrl(url);
       setToken(token);
+      sessionStartRef.current = Date.now();
+      setElapsed(0);
+      timerRef.current = setInterval(() => {
+        setElapsed(Math.floor((Date.now() - (sessionStartRef.current ?? Date.now())) / 1000));
+      }, 1000);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Connection failed");
     } finally {
@@ -40,7 +60,30 @@ export function LiveSession() {
     }
   }
 
-  function disconnect() {
+  async function disconnect() {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    // Save recording to backend
+    if (sessionStartRef.current !== null) {
+      const durationSecs = Math.floor((Date.now() - sessionStartRef.current) / 1000);
+      const duration = formatDuration(durationSecs);
+      sessionStartRef.current = null;
+
+      try {
+        await fetch(`${BACKEND_URL}/recordings`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ duration, tags: ["Live Session"] }),
+        });
+      } catch {
+        // non-blocking — don't block UI on save failure
+      }
+    }
+
+    setElapsed(0);
     setToken(null);
     setLivekitUrl(null);
   }
@@ -89,6 +132,15 @@ export function LiveSession() {
           className="flex flex-col items-center gap-5 w-full max-w-lg"
         >
           <RoomAudioRenderer />
+
+          {/* Session timer */}
+          <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/20">
+            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_6px_#22d3ee]" />
+            <span className="text-xs font-mono text-cyan-400 tabular-nums">
+              {formatDuration(elapsed)}
+            </span>
+            <span className="text-[10px] text-white/30 uppercase tracking-wider">live</span>
+          </div>
 
           <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-xl p-6 w-full flex flex-col items-center gap-5">
             <ScreenCapture />
