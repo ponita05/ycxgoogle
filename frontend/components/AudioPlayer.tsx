@@ -2,6 +2,7 @@
 
 import { useRemoteParticipants, useTracks } from "@livekit/components-react";
 import { Track } from "livekit-client";
+<<<<<<< HEAD
 import { useEffect } from "react";
 
 interface AudioPlayerProps {
@@ -11,9 +12,14 @@ interface AudioPlayerProps {
 export default function AudioPlayer({ onPlaybackChange }: AudioPlayerProps) {
   const participants = useRemoteParticipants();
 
+=======
+
+export default function AudioPlayer() {
+  const participants = useRemoteParticipants();
+>>>>>>> 054cd4ce443f75d56d0d2d1ccb465dd658450b51
   const tracks = useTracks(
     [{ source: Track.Source.Microphone, withPlaceholder: false }],
-    { onlySubscribed: true }
+    { onlySubscribed: true },
   );
 
   const agentConnected = participants.length > 0;
@@ -24,6 +30,7 @@ export default function AudioPlayer({ onPlaybackChange }: AudioPlayerProps) {
   }, [isPlaying, agentConnected, onPlaybackChange]);
 
   return (
+<<<<<<< HEAD
     <div className="flex flex-col items-center gap-3">
       <div
         className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition ${
@@ -72,3 +79,41 @@ function WaveIcon({ className }: { className?: string }) {
     </svg>
   );
 }
+=======
+    <div className="flex items-center gap-2">
+      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+        isPlaying ? "bg-emerald-400 animate-pulse shadow-[0_0_6px_#34d399]"
+        : agentConnected ? "bg-amber-400"
+        : "bg-white/15"
+      }`} />
+      <span className={`text-xs ${
+        isPlaying ? "text-emerald-400"
+        : agentConnected ? "text-amber-400"
+        : "text-white/25"
+      }`}>
+        {isPlaying
+          ? "Lyria music streaming"
+          : agentConnected
+          ? "Agent connected — share screen to start"
+          : "Waiting for agent to join..."
+        }
+      </span>
+      {isPlaying && (
+        <span className="ml-auto flex gap-0.5">
+          {[1, 2, 3, 4].map((i) => (
+            <span
+              key={i}
+              className="w-0.5 bg-emerald-400 rounded-full animate-pulse"
+              style={{
+                height: `${8 + (i % 3) * 4}px`,
+                animationDelay: `${i * 0.15}s`,
+                animationDuration: "0.8s",
+              }}
+            />
+          ))}
+        </span>
+      )}
+    </div>
+  );
+}
+>>>>>>> 054cd4ce443f75d56d0d2d1ccb465dd658450b51

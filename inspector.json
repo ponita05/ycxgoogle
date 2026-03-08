@@ -1,0 +1,8 @@
+{
+  "dev": [
+    "cd frontend && npm run dev",
+    "cd backend && . venv/bin/activate && uvicorn main:app --reload --port 8000",
+    "cd backend && . venv/bin/activate && python agent.py start"
+  ],
+  "install": "cd frontend && npm i && cd ../backend && python3 -m venv venv && . venv/bin/activate && pip install -r requirements.txt"
+}

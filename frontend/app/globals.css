@@ -1,8 +1,16 @@
 @import "tailwindcss";
 
 :root {
+<<<<<<< HEAD
   --background: #f3f8fb;
   --foreground: #122234;
+=======
+  --background: #000000;
+  --foreground: #ffffff;
+  --border: #333333;
+  --surface: #111111;
+  --muted: #888888;
+>>>>>>> 054cd4ce443f75d56d0d2d1ccb465dd658450b51
 }
 
 @theme inline {
@@ -12,10 +20,13 @@
   --font-mono: "SFMono-Regular", Menlo, Consolas, monospace;
 }
 
+<<<<<<< HEAD
 * {
   box-sizing: border-box;
 }
 
+=======
+>>>>>>> 054cd4ce443f75d56d0d2d1ccb465dd658450b51
 body {
   min-height: 100vh;
   background:
@@ -23,6 +34,7 @@ body {
     radial-gradient(circle at 84% 12%, #e8fbe9 0%, transparent 38%),
     linear-gradient(160deg, #f7fbff 0%, #edf5ff 48%, #f4fbf8 100%);
   color: var(--foreground);
+<<<<<<< HEAD
   font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
   transition: background-color 280ms ease, color 220ms ease;
 }
@@ -114,4 +126,25 @@ a:active {
   textarea {
     transition: none;
   }
+=======
+  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+>>>>>>> 054cd4ce443f75d56d0d2d1ccb465dd658450b51
 }

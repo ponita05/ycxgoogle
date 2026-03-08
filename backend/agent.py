@@ -15,6 +15,7 @@ import logging
 import os
 import ssl
 import certifi
+import httpx
 
 from dotenv import load_dotenv
 from livekit import rtc
@@ -80,7 +81,25 @@ async def entrypoint(ctx: JobContext):
     )
 
     current_description: list[str] = ["epic video game background music"]
+    raw_description: list[str] = [""]
     prompt_update_event = asyncio.Event()
+
+    async def _post_backend_state(raw: str, prompt: str) -> None:
+        """Fire-and-forget: push current agent state to the FastAPI backend."""
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    "http://localhost:8000/internal/agent/update",
+                    json={
+                        "description": raw,
+                        "prompt": prompt,
+                        "is_playing": True,
+                        "room": ctx.room.name,
+                    },
+                    timeout=2.0,
+                )
+        except Exception as e:
+            logger.debug(f"Backend state update failed: {e}")
 
     async def lyria_loop():
         """Maintain a persistent Lyria session; update prompts as descriptions change."""
@@ -126,7 +145,10 @@ async def entrypoint(ctx: JobContext):
                     await prompt_update_event.wait()
                     prompt_update_event.clear()
                     desc = current_description[0]
+                    raw = raw_description[0]
                     logger.info(f"Updating Lyria prompt: {desc[:80]}")
+                    # Push state to backend (non-blocking)
+                    asyncio.create_task(_post_backend_state(raw, desc))
                     try:
                         await session.set_weighted_prompts(
                             prompts=[
@@ -157,9 +179,23 @@ async def entrypoint(ctx: JobContext):
         def on_result(result):
             description = result.result
             logger.info(f"Overshoot result: {description[:100]}")
+
+            # Skip descriptions that are clearly not game content
+            _skip_keywords = (
+                "desktop", "browser", "taskbar", "file manager", "finder",
+                "settings", "system", "operating system", "dock", "toolbar",
+                "no game", "not a game", "cannot identify", "can't identify",
+                "unclear", "blurry", "black screen", "loading screen",
+            )
+            desc_lower = description.lower()
+            if any(kw in desc_lower for kw in _skip_keywords):
+                logger.info("Skipping non-game description")
+                return
+
+            raw_description[0] = description
             current_description[0] = (
-                f"video game background music — {description} — "
-                "no vocals, adaptive game soundtrack"
+                f"video game soundtrack — {description} — "
+                "no vocals, cinematic orchestral or electronic, adaptive game music"
             )
             prompt_update_event.set()
 
@@ -173,10 +209,15 @@ async def entrypoint(ctx: JobContext):
                 token=overshoot_token,
             ),
             prompt=(
-                "Describe the video game scene in detail. Focus on: "
-                "mood (tense/calm/epic/mysterious), action level (combat/exploration/cutscene/menu), "
-                "environment type (forest/dungeon/city/space/etc.), and any notable events. "
-                "Be concise, 1-2 sentences."
+                "You are watching a screen share of someone playing a video game. "
+                "Ignore any desktop chrome, browser UI, taskbars, or OS elements — focus only on the game itself. "
+                "Describe the in-game scene for adaptive music generation. "
+                "Be specific: name the energy level (intense combat / stealth / exploration / boss fight / victory / cutscene), "
+                "the environment (underground cave / open sky / dense forest / futuristic city / etc.), "
+                "and the dominant emotion (dread, triumph, wonder, urgency, sorrow, excitement). "
+                "Do NOT use generic words like 'calm', 'menu', or 'computer screen'. "
+                "If no clear game content is visible, say 'no game content visible'. "
+                "Answer in 1-2 punchy sentences."
             ),
             model=OVERSHOOT_MODEL,
             mode="frame",
