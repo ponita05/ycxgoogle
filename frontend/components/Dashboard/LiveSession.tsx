@@ -270,6 +270,28 @@ function ConnectedView({
     return () => clearInterval(id);
   }, [pollState]);
 
+  // Keyboard shortcuts for presets (1-5)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only trigger if not typing in an input field
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      const key = e.key;
+      const presetNum = parseInt(key, 10);
+
+      // Check if key is a valid preset number (1-5)
+      if (presetNum >= 1 && presetNum <= 5) {
+        e.preventDefault();
+        applyPreset(presetNum);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activePreset]); // Include activePreset in dependencies so applyPreset has current state
+
   async function applyPreset(num: number) {
     if (activePreset === num) {
       // Toggle off → resume AI mode
@@ -386,7 +408,7 @@ function ConnectedView({
       <div className="rounded-xl border border-white/8 bg-white/[0.02] p-3">
         <div className="flex items-center gap-2 mb-2.5">
           <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 shadow-[0_0_6px_#e879f9]" />
-          <span className="text-[10px] font-mono text-fuchsia-400 uppercase tracking-widest">Lydia Hardcode</span>
+          <span className="text-[10px] font-mono text-fuchsia-400 uppercase tracking-widest">Lydia</span>
           {activePreset && (
             <span className="ml-auto text-[9px] font-mono text-white/30 uppercase tracking-wider">AI override active · click again to resume</span>
           )}
