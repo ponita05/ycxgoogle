@@ -41,6 +41,7 @@ OVERSHOOT_API_KEY = os.getenv("OVERSHOOT_API_KEY")
 
 FRAME_INTERVAL = float(os.getenv("FRAME_SAMPLE_INTERVAL", "3"))
 OVERSHOOT_MODEL = os.getenv("OVERSHOOT_MODEL", "Qwen/Qwen3-VL-8B-Instruct")
+AGENT_NAME = os.getenv("LIVEKIT_AGENT_NAME", "game-audio-agent")
 
 
 def make_livekit_token(room: str, identity: str, can_publish: bool = False) -> str:
@@ -82,6 +83,9 @@ async def entrypoint(ctx: JobContext):
 
     current_description: list[str] = ["epic video game background music"]
     raw_description: list[str] = [""]
+    latest_ai_raw_description: list[str] = [""]
+    latest_ai_prompt: list[str] = ["epic video game background music"]
+    override_active: list[bool] = [False]
     prompt_update_event = asyncio.Event()
 
     async def _post_backend_state(raw: str, prompt: str) -> None:
@@ -155,10 +159,44 @@ async def entrypoint(ctx: JobContext):
                                 genai_types.WeightedPrompt(text=desc, weight=1.0)
                             ]
                         )
+                        # Keep generation active after prompt switches.
+                        await session.play()
                     except Exception as e:
                         logger.error(f"Prompt update error: {e}")
 
             await asyncio.gather(push_audio(), update_prompts())
+
+    async def override_loop():
+        """Poll the backend for hardcode overrides and push them to Lyria."""
+        while True:
+            await asyncio.sleep(2)
+            try:
+                async with httpx.AsyncClient() as client:
+                    res = await client.get(
+                        "http://localhost:8000/internal/agent/override",
+                        params={"room": ctx.room.name},
+                        timeout=2.0,
+                    )
+                    if res.status_code == 200:
+                        data = res.json()
+                        override = data.get("prompt")
+
+                        if override:
+                            override_active[0] = True
+                            if current_description[0] != override:
+                                logger.info(f"Applying hardcode override: {override[:60]}")
+                                raw_description[0] = override
+                                current_description[0] = override
+                                prompt_update_event.set()
+                        elif override_active[0]:
+                            # Override was cleared; immediately restore latest AI prompt.
+                            override_active[0] = False
+                            raw_description[0] = latest_ai_raw_description[0]
+                            current_description[0] = latest_ai_prompt[0]
+                            logger.info("Hardcode override cleared, resuming AI-driven prompt")
+                            prompt_update_event.set()
+            except Exception as e:
+                logger.debug(f"Override poll failed: {e}")
 
     async def overshoot_loop():
         """Connect Overshoot to the LiveKit room screen share and call Lyria on results."""
@@ -167,6 +205,13 @@ async def entrypoint(ctx: JobContext):
         # Wait until at least one remote participant joins
         while len(ctx.room.remote_participants) == 0:
             await asyncio.sleep(1)
+            logger.debug(f"Waiting for participants... current: {len(ctx.room.remote_participants)}")
+
+        logger.info(f"Found {len(ctx.room.remote_participants)} remote participant(s)")
+
+        # Wait a bit for screen share to start
+        logger.info("Waiting for screen share to be published...")
+        await asyncio.sleep(3)
 
         overshoot_token = make_livekit_token(
             room=ctx.room.name,
@@ -192,11 +237,19 @@ async def entrypoint(ctx: JobContext):
                 logger.info("Skipping non-game description")
                 return
 
-            raw_description[0] = description
-            current_description[0] = (
+            ai_prompt = (
                 f"video game soundtrack — {description} — "
                 "no vocals, cinematic orchestral or electronic, adaptive game music"
             )
+            latest_ai_raw_description[0] = description
+            latest_ai_prompt[0] = ai_prompt
+
+            # Keep AI prompt fresh in memory, but do not interrupt an active override.
+            if override_active[0]:
+                return
+
+            raw_description[0] = description
+            current_description[0] = ai_prompt
             prompt_update_event.set()
 
         def on_error(error):
@@ -226,7 +279,7 @@ async def entrypoint(ctx: JobContext):
             on_error=on_error,
         )
 
-        logger.info("Overshoot stream active")
+        logger.info("Overshoot stream active and watching for screen shares")
 
         # Keep the stream alive until the room disconnects
         try:
@@ -237,15 +290,26 @@ async def entrypoint(ctx: JobContext):
             await os_client.close()
             logger.info("Overshoot stream closed")
 
-    asyncio.ensure_future(lyria_loop())
-    asyncio.ensure_future(overshoot_loop())
+    # Start all loops
+    lyria_task = asyncio.create_task(lyria_loop())
+    overshoot_task = asyncio.create_task(overshoot_loop())
+    override_task = asyncio.create_task(override_loop())
 
-    logger.info("Agent ready — waiting for participants")
+    logger.info("Agent ready — waiting for participants and screen share")
+
+    # Keep the agent alive by awaiting all tasks
+    try:
+        await asyncio.gather(lyria_task, overshoot_task, override_task)
+    except Exception as e:
+        logger.error(f"Agent error: {e}")
+    finally:
+        logger.info("Agent shutting down")
 
 
 if __name__ == "__main__":
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
+            agent_name=AGENT_NAME,
         )
     )
