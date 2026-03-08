@@ -205,6 +205,14 @@ function SessionEndedView({
   );
 }
 
+const LYDIA_PRESETS = [
+  { num: 1, label: "Happy & Calm",       emoji: "☀️", color: "from-yellow-400 to-amber-500",   border: "border-yellow-500/30", text: "text-yellow-400", bg: "bg-yellow-500/10" },
+  { num: 2, label: "Anxious & Scary",    emoji: "👻", color: "from-red-500 to-rose-700",        border: "border-red-500/30",    text: "text-red-400",    bg: "bg-red-500/10" },
+  { num: 3, label: "Peaceful",           emoji: "🌿", color: "from-emerald-400 to-teal-500",    border: "border-emerald-500/30",text: "text-emerald-400",bg: "bg-emerald-500/10" },
+  { num: 4, label: "Intense & Thrilling",emoji: "⚡", color: "from-orange-400 to-red-500",      border: "border-orange-500/30", text: "text-orange-400", bg: "bg-orange-500/10" },
+  { num: 5, label: "Sad & Sentimental",  emoji: "🌧️", color: "from-blue-400 to-indigo-500",    border: "border-blue-500/30",   text: "text-blue-400",   bg: "bg-blue-500/10" },
+] as const;
+
 // ─── Connected view ──────────────────────────────────────────────────────────
 function ConnectedView({
   onDisconnect, elapsed, onStreamReady, onDescriptionUpdate, onAudioTrackReady,
@@ -222,6 +230,7 @@ function ConnectedView({
     last_updated: string | null;
   } | null>(null);
   const [isSharing, setIsSharing] = useState(false);
+  const [activePreset, setActivePreset] = useState<number | null>(null);
 
   const { localParticipant, isScreenShareEnabled } = useLocalParticipant();
   const allTracks = useTracks([Track.Source.ScreenShare]);
@@ -260,6 +269,21 @@ function ConnectedView({
     const id = setInterval(pollState, 2000);
     return () => clearInterval(id);
   }, [pollState]);
+
+  async function applyPreset(num: number) {
+    if (activePreset === num) {
+      // Toggle off → resume AI mode
+      await fetch(`${BACKEND_URL}/agent/override?room=${ROOM_NAME}`, { method: "DELETE" }).catch(() => {});
+      setActivePreset(null);
+    } else {
+      await fetch(`${BACKEND_URL}/agent/override`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ room: ROOM_NAME, preset: num }),
+      }).catch(() => {});
+      setActivePreset(num);
+    }
+  }
 
   const cleanPrompt = agentState?.prompt
     ? agentState.prompt
@@ -355,6 +379,37 @@ function ConnectedView({
               <AudioPlayer />
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* ── Lydia Hardcode Presets ── */}
+      <div className="rounded-xl border border-white/8 bg-white/[0.02] p-3">
+        <div className="flex items-center gap-2 mb-2.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-fuchsia-400 shadow-[0_0_6px_#e879f9]" />
+          <span className="text-[10px] font-mono text-fuchsia-400 uppercase tracking-widest">Lydia Hardcode</span>
+          {activePreset && (
+            <span className="ml-auto text-[9px] font-mono text-white/30 uppercase tracking-wider">AI override active · click again to resume</span>
+          )}
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {LYDIA_PRESETS.map((p) => {
+            const isActive = activePreset === p.num;
+            return (
+              <button
+                key={p.num}
+                onClick={() => applyPreset(p.num)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all
+                  ${isActive
+                    ? `${p.bg} ${p.border} ${p.text} shadow-[0_0_12px_rgba(255,255,255,0.08)]`
+                    : "border-white/10 text-white/40 hover:border-white/20 hover:text-white/70"
+                  }`}
+              >
+                <span>{p.emoji}</span>
+                <span>{p.num}. {p.label}</span>
+                {isActive && <span className="w-1 h-1 rounded-full bg-current animate-pulse ml-0.5" />}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

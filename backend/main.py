@@ -1,11 +1,14 @@
 import base64
 import os
+import ssl
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, Optional
 
 import aiofiles
+import aiohttp
+import certifi
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,9 +17,14 @@ from fastapi.staticfiles import StaticFiles
 from google import genai
 from google.genai import types as genai_types
 from pydantic import BaseModel
+from livekit import api as lkapi
 from livekit.api import AccessToken, VideoGrants
 
 load_dotenv()
+
+# Fix macOS Python 3.13 SSL cert verification for outbound API calls.
+os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
 
 app = FastAPI(title="ycxgoogle backend")
 
@@ -32,6 +40,7 @@ LIVEKIT_URL = os.getenv("LIVEKIT_URL")
 LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY")
 LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+AGENT_NAME = os.getenv("LIVEKIT_AGENT_NAME", "game-audio-agent")
 
 STORE_DIR = Path(__file__).parent / "store"
 STORE_DIR.mkdir(exist_ok=True)
@@ -140,6 +149,26 @@ async def health():
 async def get_token(req: TokenRequest):
     if not LIVEKIT_API_KEY or not LIVEKIT_API_SECRET:
         raise HTTPException(status_code=500, detail="LiveKit credentials not configured")
+
+    # Ensure the named worker is explicitly dispatched into this room.
+    # Without dispatch, the worker can stay idle and never publish Lydia audio.
+    try:
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
+        connector = aiohttp.TCPConnector(ssl=ssl_context)
+        session = aiohttp.ClientSession(connector=connector)
+        async with lkapi.LiveKitAPI(session=session) as livekit_api:
+            dispatches = await livekit_api.agent_dispatch.list_dispatch(req.room)
+            already_dispatched = any(d.agent_name == AGENT_NAME for d in dispatches)
+            if not already_dispatched:
+                await livekit_api.agent_dispatch.create_dispatch(
+                    lkapi.CreateAgentDispatchRequest(
+                        room=req.room,
+                        agent_name=AGENT_NAME,
+                        metadata=req.identity,
+                    )
+                )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to dispatch agent: {e}")
 
     token = (
         AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
@@ -300,6 +329,50 @@ async def delete_recording(recording_id: str):
     recordings = [r for r in recordings if r.id != recording_id]
     if len(recordings) == before:
         raise HTTPException(status_code=404, detail="Recording not found")
+
+
+# ---------------------------------------------------------------------------
+# Lydia hardcode override — lets the frontend force a specific music mood
+# ---------------------------------------------------------------------------
+
+# { room_name -> prompt_string | None }
+_overrides: dict[str, str | None] = {}
+
+HARDCODE_PRESETS: dict[int, str] = {
+    1: "happy calm music, uplifting and joyful, warm acoustic melodies, bright major key, light and gentle, no vocals",
+    2: "anxious scary music, tense horror atmosphere, dissonant strings, ominous low bass, eerie and unsettling, no vocals",
+    3: "peaceful ambient music, serene and tranquil, soft piano, gentle flowing melodies, relaxing and meditative, no vocals",
+    4: "intense thrilling music, adrenaline-pumping action, fast-paced orchestral, powerful brass and driving percussion, epic cinematic, no vocals",
+    5: "sad sentimental music, emotional and melancholic, slow tempo, piano and strings, heartfelt and nostalgic, wistful, no vocals",
+}
+
+
+class OverrideRequest(BaseModel):
+    room: str = "game-audio-room"
+    preset: int  # 1–5
+
+
+@app.post("/agent/override")
+async def set_override(req: OverrideRequest):
+    """Frontend calls this to lock Lydia to a hardcoded music mood."""
+    if req.preset not in HARDCODE_PRESETS:
+        raise HTTPException(status_code=400, detail="preset must be 1–5")
+    _overrides[req.room] = HARDCODE_PRESETS[req.preset]
+    return {"ok": True, "prompt": _overrides[req.room]}
+
+
+@app.delete("/agent/override")
+async def clear_override(room: str = Query(default="game-audio-room")):
+    """Frontend calls this to resume AI-driven music."""
+    _overrides.pop(room, None)
+    return {"ok": True}
+
+
+@app.get("/internal/agent/override")
+async def get_override(room: str = Query(default="game-audio-room")):
+    """Agent polls this to check for a pending hardcode override.
+    Returns the prompt if one is active, or null if AI mode is active."""
+    return {"prompt": _overrides.get(room)}
 
 
 # ---------------------------------------------------------------------------
